@@ -1,4 +1,3 @@
-//
 // utility: 指定したミリ秒待機する
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -90,7 +89,7 @@ function executeScroll(action) {
 }
 
 // ==========================================
-// モデル切り替え用ロジック（修正版）
+// モデル切り替え用ロジック (強化版)
 // ==========================================
 async function executeModelSwitch(targetModelName) {
   let modelBtn = null;
@@ -100,46 +99,38 @@ async function executeModelSwitch(targetModelName) {
   const currentButtons = Array.from(document.querySelectorAll(selectors));
   modelBtn = currentButtons.find(btn => {
     const text = btn.textContent;
-    // 「高速モード」「思考モード」「Gemini 3」などを含むボタンを特定
     return (text.includes('モード') || text.includes('Pro') || text.includes('Gemini')) &&
-      btn.querySelector('mat-icon, svg'); // アイコンが含まれていることが多い
+      btn.querySelector('mat-icon, svg');
   });
 
   if (!modelBtn) throw new Error('モデル選択ボタンが見つかりませんでした。');
 
   modelBtn.click();
-  await sleep(800); // メニュー展開を少し長めに待機
+  await sleep(800);
 
-  // 2. メニューの中から対象のモデル名を探す
-  // 完全に一致するテキスト、または role="menuitem" 内のテキストを優先する
-  let modelItem = null;
+  // 2. メニューの中から対象のモデル名を厳密に探す
   const menuItems = Array.from(document.querySelectorAll('div[role="menuitem"], li, button'));
-
-  modelItem = menuItems.find(item => {
+  let modelItem = menuItems.find(item => {
     const text = item.textContent.trim();
-    // 説明文（「複雑な問題を解決」など）を拾わないよう、先頭が一致するかチェック
+    // 説明文を避けるため、テキストの開始部分で判定
     return text.startsWith(targetModelName);
   });
 
   if (!modelItem) {
-    // フォールバック: 既存の検索関数で再試行
     modelItem = findTerminalElementByText('div, span, li', targetModelName);
   }
 
   if (!modelItem) throw new Error(`モデル「${targetModelName}」が見つかりませんでした。`);
 
   // 3. クリック実行
-  // role="menuitem" 自体、またはその中のクリック可能な要素を叩く
   const clickable = modelItem.getAttribute('role') === 'menuitem' ? modelItem : (modelItem.closest('div[role="menuitem"]') || modelItem);
-
   clickable.click();
 
   showToast(`🤖 モデルを ${targetModelName} に切り替えました`);
-  await sleep(1000); // 切り替え完了後の安定待ち
+  await sleep(1000);
 }
 
-// 1件のURL（またはパス）をインポートする処理
-//
+// 1件のURLをインポートする処理
 async function importSingleUrl(targetString) {
   let plusBtn = null;
   const textarea = document.querySelector('textarea, rich-textarea, div[contenteditable="true"]');
@@ -154,7 +145,6 @@ async function importSingleUrl(targetString) {
         const isExclude = (label.includes('削除') || label.includes('remove') || label.includes('モデル') || label.includes('model') || label.includes('gemini'));
         return isMatch && !isExclude;
       });
-
       if (plusBtn) break;
       container = container.parentElement;
     }
@@ -168,8 +158,7 @@ async function importSingleUrl(targetString) {
     });
   }
 
-  if (!plusBtn) throw new Error('[+] メメニューボタンが見つかりませんでした。');
-
+  if (!plusBtn) throw new Error('[+] メニューボタンが見つかりませんでした。');
   plusBtn.click();
   await sleep(600);
 
@@ -189,7 +178,6 @@ async function importSingleUrl(targetString) {
   clickableItem.click();
 
   await sleep(1000);
-
   const isWebUrl = /^https?:\/\//i.test(targetString.trim());
 
   if (isWebUrl) {
@@ -201,52 +189,35 @@ async function importSingleUrl(targetString) {
         urlInput = dialog.querySelector('input[type="text"]');
       }
     }
-
     if (!urlInput) throw new Error('URL入力欄が見つかりませんでした。');
 
     urlInput.focus();
-    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-    if (nativeInputValueSetter) {
-      nativeInputValueSetter.call(urlInput, targetString);
-    } else {
-      urlInput.value = targetString;
-    }
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+    if (setter) setter.call(urlInput, targetString); else urlInput.value = targetString;
     urlInput.dispatchEvent(new Event('input', { bubbles: true }));
     urlInput.dispatchEvent(new Event('change', { bubbles: true }));
 
     await sleep(400);
-
     let insertBtn = findTerminalElementByText('button, div[role="button"]', 'インポート') ||
       findTerminalElementByText('button, div[role="button"]', 'Import');
 
     if (insertBtn) {
-      let targetBtn = insertBtn.closest('button') || insertBtn.closest('div[role="button"]') || insertBtn;
-      targetBtn.click();
+      (insertBtn.closest('button') || insertBtn.closest('div[role="button"]') || insertBtn).click();
       await sleep(2500);
-    } else {
-      throw new Error('「インポート」実行ボタンが見つかりませんでした。');
-    }
+    } else throw new Error('「インポート」実行ボタンが見つかりませんでした。');
 
   } else {
-    try {
-      await navigator.clipboard.writeText(targetString);
-      showToast(`📁パスをコピーしました: ${targetString}`);
-    } catch (err) { }
-
+    try { await navigator.clipboard.writeText(targetString); showToast(`📁パスをコピーしました: ${targetString}`); } catch (err) { }
     let folderBtn = null;
-    const selector = 'div, span, button, a, label, p';
     for (let i = 0; i < 5; i++) {
-      folderBtn = findTerminalElementByText(selector, 'フォルダをアップロード') ||
-        findTerminalElementByText(selector, 'Upload folder');
+      folderBtn = findTerminalElementByText('div, span, button, a, label, p', 'フォルダをアップロード') ||
+        findTerminalElementByText('div, span, button, a, label, p', 'Upload folder');
       if (folderBtn) break;
       await sleep(500);
     }
-
     if (folderBtn) {
-      let targetBtn = folderBtn.closest('button') || folderBtn.closest('div[role="button"]') || folderBtn.closest('label') || folderBtn;
-      targetBtn.click();
-      let waitCount = 0;
-      let dialogExists = true;
+      (folderBtn.closest('button') || folderBtn.closest('div[role="button"]') || folderBtn.closest('label') || folderBtn).click();
+      let waitCount = 0, dialogExists = true;
       while (dialogExists && waitCount < 120) {
         await sleep(1000);
         const dialogs = document.querySelectorAll('dialog, [role="dialog"]');
@@ -254,9 +225,7 @@ async function importSingleUrl(targetString) {
         waitCount++;
       }
       await sleep(1500);
-    } else {
-      throw new Error('「フォルダをアップロード」ボタンが見つかりませんでした。');
-    }
+    } else throw new Error('「フォルダをアップロード」ボタンが見つかりませんでした。');
   }
 }
 
@@ -283,9 +252,7 @@ async function runAutoImport() {
       try {
         await importSingleUrl(targetUrl);
         const repoIndex = repos.findIndex(r => r.url === targetUrl);
-        if (repoIndex !== -1) {
-          repos[repoIndex].lastImported = Date.now();
-        }
+        if (repoIndex !== -1) repos[repoIndex].lastImported = Date.now();
       } catch (e) {
         console.warn(`[Gemini Repo Importer] ${targetUrl} 失敗:`, e);
         hasError = true;
@@ -309,36 +276,25 @@ async function runAutoImport() {
 }
 
 // ドラッグ管理
-let isDragging = false;
-let hasMoved = false;
-let startX, startY, initialX, initialY;
-let dragTarget = null;
-
+let isDragging = false, hasMoved = false, startX, startY, initialX, initialY, dragTarget = null;
 if (!window.geminiDragInitialized) {
   window.geminiDragInitialized = true;
   document.addEventListener('mousemove', (e) => {
     if (!isDragging || !dragTarget) return;
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
+    const dx = e.clientX - startX, dy = e.clientY - startY;
     if (!hasMoved && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) hasMoved = true;
     if (hasMoved) {
-      dragTarget.style.bottom = 'auto';
-      dragTarget.style.right = 'auto';
-      dragTarget.style.left = `${initialX + dx}px`;
-      dragTarget.style.top = `${initialY + dy}px`;
+      dragTarget.style.bottom = 'auto'; dragTarget.style.right = 'auto';
+      dragTarget.style.left = `${initialX + dx}px`; dragTarget.style.top = `${initialY + dy}px`;
     }
   });
   document.addEventListener('mouseup', async () => {
     if (!isDragging || !dragTarget) return;
-    if (hasMoved) {
-      await chrome.storage.local.set({ widgetPosition: { left: dragTarget.style.left, top: dragTarget.style.top } });
-    }
-    isDragging = false;
-    setTimeout(() => { hasMoved = false; dragTarget = null; }, 50);
+    if (hasMoved) await chrome.storage.local.set({ widgetPosition: { left: dragTarget.style.left, top: dragTarget.style.top } });
+    isDragging = false; setTimeout(() => { hasMoved = false; dragTarget = null; }, 50);
   });
 }
 
-// モデル選択UIを含む新しいレンダリング関数
 async function renderRepoPanel() {
   let container = document.getElementById('gemini-auto-import-container');
   if (!container) {
@@ -349,40 +305,25 @@ async function renderRepoPanel() {
   container.innerHTML = '';
   const data = await chrome.storage.local.get(['repos', 'widgetPosition', 'selectedModel']);
   if (data.widgetPosition) {
-    container.style.bottom = 'auto';
-    container.style.right = 'auto';
-    container.style.left = data.widgetPosition.left;
-    container.style.top = data.widgetPosition.top;
+    container.style.bottom = 'auto'; container.style.right = 'auto';
+    container.style.left = data.widgetPosition.left; container.style.top = data.widgetPosition.top;
   }
 
-  // モデル選択ドロップダウンの追加
+  // モデル選択UI
   const modelGroup = document.createElement('div');
   modelGroup.className = 'gemini-model-group';
-
   const modelSelect = document.createElement('select');
   modelSelect.id = 'gemini-model-select';
   ['高速モード', '思考モード', 'Pro'].forEach(m => {
-    const opt = document.createElement('option');
-    opt.value = m;
-    opt.textContent = m;
+    const opt = document.createElement('option'); opt.value = m; opt.textContent = m;
     if (m === (data.selectedModel || '思考モード')) opt.selected = true;
     modelSelect.appendChild(opt);
   });
-
-  modelSelect.addEventListener('change', async (e) => {
-    await chrome.storage.local.set({ selectedModel: e.target.value });
-  });
-
+  modelSelect.addEventListener('change', async (e) => await chrome.storage.local.set({ selectedModel: e.target.value }));
   const modelApplyBtn = document.createElement('button');
-  modelApplyBtn.className = 'gemini-model-apply-btn';
-  modelApplyBtn.textContent = '切替';
-  modelApplyBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    executeModelSwitch(modelSelect.value);
-  });
-
-  modelGroup.appendChild(modelSelect);
-  modelGroup.appendChild(modelApplyBtn);
+  modelApplyBtn.className = 'gemini-model-apply-btn'; modelApplyBtn.textContent = '切替';
+  modelApplyBtn.addEventListener('click', (e) => { e.stopPropagation(); executeModelSwitch(modelSelect.value); });
+  modelGroup.appendChild(modelSelect); modelGroup.appendChild(modelApplyBtn);
 
   let repos = data.repos || [];
   if (repos.length > 0) {
@@ -391,9 +332,7 @@ async function renderRepoPanel() {
     [...repos].sort((a, b) => (b.lastImported || 0) - (a.lastImported || 0)).forEach(repo => {
       const item = document.createElement('div');
       item.className = 'gemini-repo-item';
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.checked = repo.checked;
+      const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = repo.checked;
       checkbox.addEventListener('change', async (e) => {
         const d = await chrome.storage.local.get(['repos']);
         let rs = d.repos || [];
@@ -408,21 +347,14 @@ async function renderRepoPanel() {
   }
 
   const bg = document.createElement('div'); bg.className = 'gemini-button-group';
-
-  // UIの順序: モデル選択 -> インポートボタン -> スクロールボタン
   bg.appendChild(modelGroup);
-
   const ab = document.createElement('button'); ab.id = 'gemini-auto-import-btn'; ab.className = 'gemini-action-btn'; ab.type = 'button'; ab.textContent = '📥 自動インポート';
   ab.addEventListener('click', async () => {
-    // インポート前に選択中のモデルへ切り替え
     const currentData = await chrome.storage.local.get(['selectedModel']);
-    if (currentData.selectedModel) {
-      try { await executeModelSwitch(currentData.selectedModel); } catch (e) { }
-    }
+    if (currentData.selectedModel) try { await executeModelSwitch(currentData.selectedModel); } catch (e) { }
     runAutoImport();
   });
   bg.appendChild(ab);
-
   const sg = document.createElement('div'); sg.className = 'gemini-scroll-group';
   const csb = (t, ti, a) => {
     const b = document.createElement('button'); b.className = 'gemini-scroll-btn'; b.type = 'button'; b.textContent = t; b.title = ti; b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); executeScroll(a); }); return b;
@@ -438,7 +370,6 @@ async function renderRepoPanel() {
   container.addEventListener('click', (e) => { if (hasMoved) { e.stopPropagation(); e.preventDefault(); } }, true);
 }
 
-//
 chrome.runtime.onMessage.addListener((request) => { if (request.action === "REFRESH_LIST") renderRepoPanel(); });
 const observer = new MutationObserver(() => { if (!document.getElementById('gemini-auto-import-container')) renderRepoPanel(); });
 observer.observe(document.body, { childList: true, subtree: true });
