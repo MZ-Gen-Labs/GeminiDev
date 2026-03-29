@@ -10,7 +10,7 @@
     "*://gemini.google.com/*"
   ],
   "action": {
-    "default_popup": "popup.html",
+    "default_popup": "popup/popup.html",
     "default_title": "Gemini Repo Importer 設定"
   },
   "content_scripts": [
@@ -19,10 +19,10 @@
         "https://gemini.google.com/app*"
       ],
       "css": [
-        "content.css"
+        "content/content.css"
       ],
       "js": [
-        "content.js"
+        "content/content.js"
       ],
       "run_at": "document_end"
     }
