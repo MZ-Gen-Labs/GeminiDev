@@ -139,6 +139,41 @@ function executeScroll(action) {
   });
 }
 
+// 相対スクロールジャンプ（前の質問、次のコードなどへ移動）
+function scrollRelative(selector, direction) {
+  // 画面上に存在する対象要素（質問ブロックやコードブロック）をすべて取得
+  const elements = Array.from(document.querySelectorAll(selector)).filter(el => {
+    const rect = el.getBoundingClientRect();
+    return rect.height > 0; // 表示されているもののみ
+  });
+
+  if (elements.length === 0) {
+    showToast('該当要素が見つかりません');
+    return;
+  }
+
+  // Geminiには固定ヘッダーがあるため、判定にマージン（オフセット）を持たせる
+  const OFFSET = 80;
+
+  if (direction === 'next') {
+    // 現在のスクロール位置（一番上の表示領域）より「下」にある最初の要素を探す
+    const target = elements.find(el => Math.round(el.getBoundingClientRect().top) > (OFFSET + 10));
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      showToast('これ以上、次の要素はありません');
+    }
+  } else if (direction === 'prev') {
+    // 現在のスクロール位置より「上」にある最後の要素を探す（配列を逆順にして上に向かって探索）
+    const target = [...elements].reverse().find(el => Math.round(el.getBoundingClientRect().top) < (OFFSET - 10));
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      showToast('これ以上、前の要素はありません');
+    }
+  }
+}
+
 // ==========================================
 // モデル切り替え用ロジック (構造変更対応版)
 // ==========================================
@@ -520,7 +555,20 @@ async function renderRepoPanel() {
     const b = document.createElement('button'); b.className = 'gemini-scroll-btn'; b.type = 'button'; b.textContent = t; b.title = ti; b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); executeScroll(a); }); return b;
   };
   sg.appendChild(csb('⏫', 'トップ', 'top')); sg.appendChild(csb('🔼', '上', 'up')); sg.appendChild(csb('🔽', '下', 'down')); sg.appendChild(csb('⏬', 'ラスト', 'bottom'));
-  bg.appendChild(sg); container.appendChild(bg);
+  bg.appendChild(sg); 
+  
+  // ジャンプコントローラー (新規: 前/次の質問、前/次のコード)
+  const jg = document.createElement('div'); jg.className = 'gemini-scroll-group';
+  const cjb = (t, ti, selector, dir) => {
+    const b = document.createElement('button'); b.className = 'gemini-scroll-btn'; b.type = 'button'; b.textContent = t; b.title = ti; b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); scrollRelative(selector, dir); }); return b;
+  };
+  jg.appendChild(cjb('👤⬆️', '前の質問へ', 'user-query', 'prev'));
+  jg.appendChild(cjb('👤⬇️', '次の質問へ', 'user-query', 'next'));
+  jg.appendChild(cjb('💻⬆️', '前のコードへ', 'code-block', 'prev'));
+  jg.appendChild(cjb('💻⬇️', '次のコードへ', 'code-block', 'next'));
+  bg.appendChild(jg);
+  
+  container.appendChild(bg);
 
   container.addEventListener('mousedown', (e) => {
     if (e.target.tagName.toLowerCase() === 'input' || e.target.tagName.toLowerCase() === 'select' || e.target.closest('#gemini-auto-import-panel') || e.target.closest('.gemini-scroll-btn') || e.target.closest('.gemini-model-apply-btn')) return;
