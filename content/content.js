@@ -11,8 +11,10 @@ function applyScrollbarStyle(config) {
     return;
   }
 
-  // デフォルト値
-  const width = config.sbWidth || 8;
+  // デフォルト値とサニタイズ（数値以外や不正な値を防ぐ）
+  let width = parseInt(config.sbWidth, 10);
+  if (isNaN(width)) width = 8;
+  width = Math.max(4, Math.min(width, 24)); // 4px 〜 24px の間に制限
   const isTransparent = config.sbTransparent !== false; // デフォルトtrue
   const trackColor = isTransparent ? 'transparent' : 'rgba(0, 0, 0, 0.05)';
   
@@ -602,7 +604,12 @@ async function renderRepoPanel() {
   container.addEventListener('click', (e) => { if (hasMoved) { e.stopPropagation(); e.preventDefault(); } }, true);
 }
 
-chrome.runtime.onMessage.addListener((request) => { if (request.action === "REFRESH_LIST") renderRepoPanel(); });
+chrome.runtime.onMessage.addListener((request, sender) => {
+  // 送信元がこの拡張機能自身であることを確認（セキュリティ対策）
+  if (sender.id === chrome.runtime.id && request.action === "REFRESH_LIST") {
+    renderRepoPanel();
+  }
+});
 
 // コンテナの死活監視：MutationObserverからsetIntervalによる軽量な定期チェックに変更
 setInterval(() => {

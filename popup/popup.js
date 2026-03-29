@@ -93,7 +93,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const url = urlInput.value.trim();
 
     if (!url) {
-      showStatus('URLを入力してください。', '#c5221f');
+      showStatus('内容を入力してください。', '#c5221f');
+      return;
+    }
+
+    // セキュリティ＆UX向上のための簡易バリデーション
+    const isWebUrl = /^https?:\/\//i.test(url);
+    const isWindowsPath = /^[a-zA-Z]:\\/.test(url);
+    const isUnixPath = /^\//.test(url);
+    
+    if (!isWebUrl && !isWindowsPath && !isUnixPath) {
+      showStatus('無効なURLまたはパスです。', '#c5221f');
       return;
     }
 
