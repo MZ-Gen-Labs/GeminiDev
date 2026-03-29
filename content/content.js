@@ -69,6 +69,22 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
 // utility: 指定したミリ秒待機する
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+// utility: 要素が出現するまで待機する
+async function waitForElement(selector, timeout = 5000) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    let el;
+    if (typeof selector === 'function') {
+      el = selector();
+    } else {
+      el = document.querySelector(selector);
+    }
+    if (el) return el;
+    await sleep(200);
+  }
+  return null;
+}
+
 // utility: 画面上部に一時的なトースト通知を表示する
 function showToast(message) {
   const toast = document.createElement('div');
@@ -135,7 +151,9 @@ function executeScroll(action) {
           else target.scrollBy({ top: (clientHeight * 0.8), behavior: 'smooth' });
           break;
       }
-    } catch (e) { }
+    } catch (e) {
+      console.debug('[Dev Toolkit for Gemini] Scroll execution error:', e);
+    }
   });
 }
 
@@ -152,7 +170,8 @@ function scrollRelative(selector, direction) {
     return;
   }
 
-  // Geminiには固定ヘッダーがあるため、判定にマージン（オフセット）を持たせる
+  // Geminiの固定ヘッダー（上部メニューバー）の高さを考慮したマージン。
+  // 表示が崩れる場合や、将来的にUI変更があった際はこの値を調整してください。
   const OFFSET = 80;
 
   if (direction === 'next') {
@@ -347,31 +366,26 @@ async function importSingleUrl(targetString) {
       .find(el => el.innerText && (el.innerText.includes('コードをインポート') || el.innerText.includes('Import code')));
   };
 
-  let importCodeItem = findImportCodeItem();
-
-  if (!importCodeItem) {
-    await sleep(1000);
-    importCodeItem = findImportCodeItem();
-    if (!importCodeItem) throw new Error('「コードをインポート」メニューが見つかりませんでした。');
-  }
+  const importCodeItem = await waitForElement(() => findImportCodeItem(), 5000);
+  if (!importCodeItem) throw new Error('「コードをインポート」メニューが見つかりませんでした。');
 
   importCodeItem.click();
-
-  await sleep(1000);
   const isWebUrl = /^https?:\/\//i.test(targetString.trim());
 
   if (isWebUrl) {
-    let urlInput = document.querySelector('input[data-test-id="repo-url-input"]');
-    if (!urlInput) {
-      urlInput = document.querySelector('input[placeholder*="github.com"]');
-    }
-    if (!urlInput) {
+    const findUrlInput = () => {
+      let input = document.querySelector('input[data-test-id="repo-url-input"]');
+      if (input) return input;
+      input = document.querySelector('input[placeholder*="github.com"]');
+      if (input) return input;
       const dialogs = document.querySelectorAll('dialog, [role="dialog"]');
       if (dialogs.length > 0) {
-        let dialog = dialogs[dialogs.length - 1];
-        urlInput = dialog.querySelector('input[type="text"]');
+        return dialogs[dialogs.length - 1].querySelector('input[type="text"]');
       }
-    }
+      return null;
+    };
+
+    const urlInput = await waitForElement(() => findUrlInput(), 5000);
     if (!urlInput) throw new Error('URL入力欄が見つかりませんでした。');
 
     urlInput.focus();
@@ -380,30 +394,40 @@ async function importSingleUrl(targetString) {
     urlInput.dispatchEvent(new Event('input', { bubbles: true }));
     urlInput.dispatchEvent(new Event('change', { bubbles: true }));
 
-    await sleep(400);
+    await sleep(400); // inputイベント反応待ち
     // インポート実行ボタンを探す
-    let insertBtn = document.querySelector('button[data-test-id="import-repository-button"]');
-    if (!insertBtn) {
-      insertBtn = Array.from(document.querySelectorAll('button, div[role="button"]'))
+    const findInsertBtn = () => {
+      let btn = document.querySelector('button[data-test-id="import-repository-button"]');
+      if (btn) return btn;
+      return Array.from(document.querySelectorAll('button, div[role="button"]'))
         .find(el => el.innerText && (el.innerText === 'インポート' || el.innerText === 'Import'));
-    }
+    };
 
+    const insertBtn = await waitForElement(() => findInsertBtn(), 5000);
     if (insertBtn) {
       insertBtn.click();
-      await sleep(2500);
+      await sleep(2500); // 描画後のインポート処理待ち（ダイアログ遷移等が含まれるため）
     } else throw new Error('「インポート」実行ボタンが見つかりませんでした。');
 
   } else {
-    try { await navigator.clipboard.writeText(targetString); showToast(`📁パスをコピーしました: ${targetString}`); } catch (err) { }
-    // フォルダアップロードボタンを探す
-    let folderBtn = document.querySelector('button[data-test-id="upload-code-folder-button"]');
-    if (!folderBtn) {
-      folderBtn = Array.from(document.querySelectorAll('div, span, button, a, label, p'))
-        .find(el => el.innerText && (el.innerText.includes('フォルダをアップロード') || el.innerText.includes('Upload folder')));
+    try {
+      await navigator.clipboard.writeText(targetString);
+      showToast(`📁パスをコピーしました: ${targetString}`);
+    } catch (err) {
+      console.warn("Clipboard API failed", err);
+      showToast(`⚠️ コピー失敗。手動でペーストしてください: ${targetString}`);
     }
+    // フォルダアップロードボタンを探す
+    const findFolderBtn = () => {
+      let btn = document.querySelector('button[data-test-id="upload-code-folder-button"]');
+      if (btn) return btn;
+      return Array.from(document.querySelectorAll('div, span, button, a, label, p'))
+        .find(el => el.innerText && (el.innerText.includes('フォルダをアップロード') || el.innerText.includes('Upload folder')));
+    };
 
-    if (folderBtn) {
-      const c = folderBtn.closest('button') || folderBtn.closest('div[role="button"]') || folderBtn.closest('label') || folderBtn;
+    const folderBtnElement = await waitForElement(() => findFolderBtn(), 5000);
+    if (folderBtnElement) {
+      const c = folderBtnElement.closest('button') || folderBtnElement.closest('div[role="button"]') || folderBtnElement.closest('label') || folderBtnElement;
       c.click();
       let waitCount = 0, dialogExists = true;
       while (dialogExists && waitCount < 120) {
@@ -579,6 +603,12 @@ async function renderRepoPanel() {
 }
 
 chrome.runtime.onMessage.addListener((request) => { if (request.action === "REFRESH_LIST") renderRepoPanel(); });
-const observer = new MutationObserver(() => { if (!document.getElementById('gemini-auto-import-container')) renderRepoPanel(); });
-observer.observe(document.body, { childList: true, subtree: true });
+
+// コンテナの死活監視：MutationObserverからsetIntervalによる軽量な定期チェックに変更
+setInterval(() => {
+  if (!document.getElementById('gemini-auto-import-container')) {
+    renderRepoPanel();
+  }
+}, 2000);
+
 renderRepoPanel();
