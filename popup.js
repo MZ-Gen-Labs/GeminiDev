@@ -7,14 +7,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // データ構造: repos = [{ url: '...', checked: true, lastImported: timestamp }]
 
   function loadRepos() {
-    chrome.storage.local.get(['repos', 'githubUrl'], (result) => {
+    chrome.storage.local.get(['repos'], (result) => {
       let repos = result.repos || [];
-      // 旧バージョンの単一URLデータの移行処理
-      if (!result.repos && result.githubUrl) {
-        repos = [{ url: result.githubUrl, checked: true, lastImported: 0 }];
-        chrome.storage.local.set({ repos });
-        chrome.storage.local.remove('githubUrl');
-      }
       renderList(repos);
     });
   }
@@ -57,6 +51,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   addBtn.addEventListener('click', () => {
     const url = urlInput.value.trim();
+
+    // 未入力チェックのみ残し、GitHub URLの形式チェックを削除しました
     if (!url) {
       showStatus('URLを入力してください。', '#c5221f');
       return;
