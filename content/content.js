@@ -1,22 +1,7 @@
+// content/content.js
+
 // utility: 指定したミリ秒待機する
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-// utility: 画面上で見えているDOM要素の中から、特定のテキストを含む最も具体的な要素を探す
-function findTerminalElementByText(selector, textSearch) {
-  const elements = Array.from(document.querySelectorAll(selector));
-  const matching = elements.filter(el => {
-    const rect = el.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return false;
-    return el.textContent.trim() === textSearch || el.textContent.includes(textSearch);
-  });
-  if (matching.length === 0) return null;
-  matching.sort((a, b) => {
-    let areaA = a.getBoundingClientRect().width * a.getBoundingClientRect().height;
-    let areaB = b.getBoundingClientRect().width * b.getBoundingClientRect().height;
-    return areaA - areaB;
-  });
-  return matching[0];
-}
 
 // utility: 画面上部に一時的なトースト通知を表示する
 function showToast(message) {
@@ -89,48 +74,103 @@ function executeScroll(action) {
 }
 
 // ==========================================
-// モデル切り替え用ロジック (Pro制限判定強化版)
+// モデル切り替え用ロジック (構造変更対応版)
 // ==========================================
 async function executeModelSwitch(targetModelName) {
-  let modelBtn = null;
-  const selectors = 'button, div[role="button"]';
+  // 1. モデル選択ボタン（現在表示されているモデル名が書いてあるボタン）を探す
+  // 新UI (data-test-id または input-area-switch クラス) を優先的に検索
+  let modelBtn = document.querySelector('button[data-test-id="bard-mode-menu-button"]');
 
-  const currentButtons = Array.from(document.querySelectorAll(selectors));
-  modelBtn = currentButtons.find(btn => {
-    const text = btn.textContent;
-    return (text.includes('モード') || text.includes('Pro') || text.includes('Gemini')) &&
-      btn.querySelector('mat-icon, svg');
-  });
+  if (!modelBtn) {
+    const allBtns = Array.from(document.querySelectorAll('button, [role="button"]'));
+    modelBtn = allBtns.find(btn => {
+      const txt = btn.textContent;
+      return (txt.includes('Gemini') || txt.includes('Pro') || txt.includes('思考') || txt.includes('Flash')) &&
+        (btn.querySelector('mat-icon, svg, img') || btn.getAttribute('aria-haspopup') === 'true' || btn.classList.contains('input-area-switch'));
+    });
+  }
 
   if (!modelBtn) throw new Error('モデル選択ボタンが見つかりませんでした。');
-  modelBtn.click();
-  await sleep(800);
 
-  const menuItems = Array.from(document.querySelectorAll('div[role="menuitem"], li, button'));
-  let modelItem = menuItems.find(item => item.textContent.trim().startsWith(targetModelName));
-
-  if (!modelItem) {
-    modelItem = findTerminalElementByText('div, span, li', targetModelName);
+  // 2. メニューが開いているか確認。開いていなければクリックして開く
+  // 新UIのクラス (gds-mode-switch-menu) などを含むパネルを探す
+  const menuVisible = !!document.querySelector('div[role="menu"].gds-mode-switch-menu, [role="listbox"], .mat-menu-panel, .kb-menu');
+  if (!menuVisible) {
+    modelBtn.click();
+    await sleep(800); // メニューが描画されるまで少し長めに待機
   }
 
-  if (!modelItem) {
-    throw new Error(`${targetModelName} がメニューに見つかりません。`);
+  // 3. ターゲットとなるキーワードの定義
+  const testIdMap = {
+    'Pro': ['bard-mode-option-pro', 'bard-mode-option-gemini-advanced'],
+    '思考モード': ['bard-mode-option-思考モード', 'bard-mode-option-thinking'],
+    '高速モード': ['bard-mode-option-高速モード', 'bard-mode-option-flash']
+  };
+
+  const nameMap = {
+    'Pro': ['Pro', '1.5 Pro', 'Advanced'],
+    '思考モード': ['思考', 'Thinking', 'Flash-Thinking'],
+    '高速モード': ['Flash', '高速', '2.0 Flash']
+  };
+
+  const targetTestIds = testIdMap[targetModelName] || [];
+  const searchTerms = nameMap[targetModelName] || [targetModelName];
+
+  // 4. 要素の特定
+  let clickable = null;
+
+  // まず data-test-id から正確なボタン要素を探す
+  for (const tid of targetTestIds) {
+    const el = document.querySelector(`[data-test-id="${tid}"]`);
+    if (el) {
+      clickable = el;
+      break;
+    }
   }
 
-  const clickable = modelItem.getAttribute('role') === 'menuitem' ? modelItem : (modelItem.closest('div[role="menuitem"]') || modelItem);
+  // 見つからなかった場合のフォールバック（旧UIや文言変更対応）
+  if (!clickable) {
+    const potentialItems = Array.from(document.querySelectorAll('div[role="menuitem"], [role="option"], button[mat-menu-item], span, div'));
+    let foundElement = null;
+    for (const term of searchTerms) {
+      foundElement = potentialItems.find(el => {
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && el.textContent.trim().includes(term);
+      });
+      if (foundElement) break;
+    }
 
-  // 判定強化: aria-disabled に加え、テキストに「上限」や「リセット」が含まれているかチェック
-  const itemText = clickable.textContent;
-  const isLimited = clickable.getAttribute('aria-disabled') === 'true' ||
-    clickable.classList.contains('disabled') ||
-    itemText.includes('上限') ||
-    itemText.includes('リセット');
-
-  if (isLimited) {
-    throw new Error(`${targetModelName} は現在レートリミット等で制限されています。`);
+    if (foundElement) {
+      clickable = foundElement.closest('[role="menuitem"]') ||
+        foundElement.closest('[role="option"]') ||
+        foundElement.closest('button') ||
+        foundElement;
+    }
   }
 
+  if (!clickable) {
+    throw new Error(`${targetModelName} をメニュー内で特定できませんでした。`);
+  }
+
+  // 5. グレーアウト（制限）判定
+  // Disabledプロパティやクラス構成を総合して判定
+  const isDisabledAttr = clickable.disabled === true || clickable.getAttribute('disabled') === 'true';
+  const isAriaDisabled = clickable.getAttribute('aria-disabled') === 'true';
+  const hasDisabledClass = clickable.classList.contains('disabled') || clickable.innerText.includes('上限');
+  const style = window.getComputedStyle(clickable);
+
+  // 制限時、要素がクリック不可になっている場合にエラーとする
+  if (isDisabledAttr || isAriaDisabled || hasDisabledClass || style.pointerEvents === 'none') {
+    // メニューを開いたままにしないよう、画面のどこかをクリックして閉じる
+    document.body.click();
+    throw new Error(`${targetModelName} は現在制限されています。`);
+  }
+
+  // 6. 実行
+  // フォーカスを当ててからクリックすることで、確実にイベントを発動させる
+  clickable.focus();
   clickable.click();
+
   showToast(`🤖 モデルを ${targetModelName} に切り替えました`);
   await sleep(1000);
 }
@@ -141,17 +181,21 @@ async function smartModelSwitch(targetModelName) {
     await executeModelSwitch(targetModelName);
   } catch (e) {
     if (targetModelName === 'Pro') {
-      showToast('⚠️ Pro制限中のため、思考モードに切り替えを試みます...');
-      console.warn('Pro switch failed, falling back to 思考モード:', e.message);
+      showToast('⚠️ Pro制限中のため、思考モードへの切り替えを試みます...');
+      console.warn('Pro switch failed:', e.message);
       try {
+        // 再度メニューを開く判定を含めて実行
         await executeModelSwitch('思考モード');
       } catch (err) {
-        console.error('思考モードへの切り替えも失敗しました:', err);
-        showToast('❌ モデルの自動切り替えに失敗しました。');
+        console.error('思考モードへのフォールバックも失敗:', err);
+        try {
+          await executeModelSwitch('高速モード');
+        } catch (f) {
+          showToast('❌ 全てのモデル切り替えに失敗しました。');
+        }
       }
     } else {
       showToast(`❌ 切り替え失敗: ${e.message}`);
-      throw e;
     }
   }
 }
@@ -188,20 +232,19 @@ async function importSingleUrl(targetString) {
   plusBtn.click();
   await sleep(600);
 
-  let importCodeItem = findTerminalElementByText('div, span, li, button, a', 'コードをインポート') ||
-    findTerminalElementByText('div, span, li, button, a', 'Import code');
+  // 「コードをインポート」を検索
+  const importCodeItem = Array.from(document.querySelectorAll('div, span, li, button, a'))
+    .find(el => el.innerText && (el.innerText.includes('コードをインポート') || el.innerText.includes('Import code')));
 
   if (!importCodeItem) {
     await sleep(1000);
-    importCodeItem = findTerminalElementByText('div, span, li, button, a', 'コードをインポート') ||
-      findTerminalElementByText('div, span, li, button, a', 'Import code');
-    if (!importCodeItem) throw new Error('「コードをインポート」メニューが見つかりませんでした。');
+    const retryItem = Array.from(document.querySelectorAll('div, span, li, button, a'))
+      .find(el => el.innerText && (el.innerText.includes('コードをインポート') || el.innerText.includes('Import code')));
+    if (!retryItem) throw new Error('「コードをインポート」メニューが見つかりませんでした。');
+    retryItem.click();
+  } else {
+    importCodeItem.click();
   }
-
-  let clickableItem = importCodeItem.closest('div[role="menuitem"]') ||
-    importCodeItem.closest('li') ||
-    importCodeItem.closest('button') || importCodeItem;
-  clickableItem.click();
 
   await sleep(1000);
   const isWebUrl = /^https?:\/\//i.test(targetString.trim());
@@ -224,25 +267,24 @@ async function importSingleUrl(targetString) {
     urlInput.dispatchEvent(new Event('change', { bubbles: true }));
 
     await sleep(400);
-    let insertBtn = findTerminalElementByText('button, div[role="button"]', 'インポート') ||
-      findTerminalElementByText('button, div[role="button"]', 'Import');
+    // インポート実行ボタンをテキストベースで探す
+    const insertBtn = Array.from(document.querySelectorAll('button, div[role="button"]'))
+      .find(el => el.innerText && (el.innerText === 'インポート' || el.innerText === 'Import'));
 
     if (insertBtn) {
-      (insertBtn.closest('button') || insertBtn.closest('div[role="button"]') || insertBtn).click();
+      insertBtn.click();
       await sleep(2500);
     } else throw new Error('「インポート」実行ボタンが見つかりませんでした。');
 
   } else {
     try { await navigator.clipboard.writeText(targetString); showToast(`📁パスをコピーしました: ${targetString}`); } catch (err) { }
-    let folderBtn = null;
-    for (let i = 0; i < 5; i++) {
-      folderBtn = findTerminalElementByText('div, span, button, a, label, p', 'フォルダをアップロード') ||
-        findTerminalElementByText('div, span, button, a, label, p', 'Upload folder');
-      if (folderBtn) break;
-      await sleep(500);
-    }
+    // フォルダアップロードボタンを検索
+    const folderBtn = Array.from(document.querySelectorAll('div, span, button, a, label, p'))
+      .find(el => el.innerText && (el.innerText.includes('フォルダをアップロード') || el.innerText.includes('Upload folder')));
+
     if (folderBtn) {
-      (folderBtn.closest('button') || folderBtn.closest('div[role="button"]') || folderBtn.closest('label') || folderBtn).click();
+      const c = folderBtn.closest('button') || folderBtn.closest('div[role="button"]') || folderBtn.closest('label') || folderBtn;
+      c.click();
       let waitCount = 0, dialogExists = true;
       while (dialogExists && waitCount < 120) {
         await sleep(1000);
