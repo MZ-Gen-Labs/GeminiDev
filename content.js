@@ -37,6 +37,67 @@ function showToast(message) {
   setTimeout(() => toast.remove(), 5000);
 }
 
+// ==========================================
+// スクロール制御用ロジック（キーボードシミュレーション方式）
+// ==========================================
+function executeScroll(action) {
+  let key = '';
+  let keyCode = 0;
+
+  // ユーザーの提案通り、押すべきキーを判定
+  switch (action) {
+    case 'top':
+      key = 'Home'; keyCode = 36;
+      break;
+    case 'bottom':
+      key = 'End'; keyCode = 35;
+      break;
+    case 'up':
+      key = 'PageUp'; keyCode = 33;
+      break;
+    case 'down':
+      key = 'PageDown'; keyCode = 34;
+      break;
+  }
+
+  if (!key) return;
+
+  // 【重要】
+  // チャットの入力欄（テキストエリア）にカーソルがある状態でHomeやEndを押すと、
+  // 画面スクロールではなく「文字入力の先頭/末尾」に移動してしまうため、
+  // 一旦入力欄からフォーカスを外す（blur）処理を挟みます。
+  const activeEl = document.activeElement;
+  if (activeEl && typeof activeEl.blur === 'function') {
+    activeEl.blur();
+  }
+
+  // キーボードが押された（keydown）という擬似イベントを作成
+  const eventDown = new KeyboardEvent('keydown', {
+    key: key,
+    code: key,
+    keyCode: keyCode,
+    which: keyCode,
+    bubbles: true,
+    cancelable: true,
+    view: window
+  });
+
+  // キーボードが離された（keyup）という擬似イベントを作成
+  const eventUp = new KeyboardEvent('keyup', {
+    key: key,
+    code: key,
+    keyCode: keyCode,
+    which: keyCode,
+    bubbles: true,
+    cancelable: true,
+    view: window
+  });
+
+  // 画面全体（body）に対してイベントを強制発火させる
+  document.body.dispatchEvent(eventDown);
+  document.body.dispatchEvent(eventUp);
+}
+
 // 1件のURL（またはパス）をインポートする処理
 async function importSingleUrl(targetString) {
   let plusBtn = null;
@@ -243,7 +304,6 @@ if (!window.geminiDragInitialized) {
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
 
-    // 3px以上動いたら「ドラッグ」とみなす
     if (!hasMoved && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
       hasMoved = true;
     }
@@ -261,14 +321,12 @@ if (!window.geminiDragInitialized) {
     isDragging = false;
 
     if (hasMoved) {
-      // マウスを離した時に位置をストレージに保存
       await chrome.storage.local.set({
         widgetPosition: {
           left: dragTarget.style.left,
           top: dragTarget.style.top
         }
       });
-      // クリックイベントが暴発しないよう少し待ってからフラグを下ろす
       setTimeout(() => { hasMoved = false; dragTarget = null; }, 50);
     } else {
       dragTarget = null;
@@ -287,10 +345,8 @@ async function renderRepoPanel() {
 
   container.innerHTML = '';
 
-  // 保存されている位置情報とリストデータを取得
   const data = await chrome.storage.local.get(['repos', 'widgetPosition']);
 
-  // 位置情報の復元
   if (data.widgetPosition) {
     container.style.bottom = 'auto';
     container.style.right = 'auto';
@@ -336,17 +392,51 @@ async function renderRepoPanel() {
     container.appendChild(panel);
   }
 
-  const btn = document.createElement('button');
-  btn.id = 'gemini-auto-import-btn';
-  btn.textContent = '📥 自動インポート';
-  btn.addEventListener('click', runAutoImport);
-  container.appendChild(btn);
+  const btnGroup = document.createElement('div');
+  btnGroup.className = 'gemini-button-group';
+
+  const autoImportBtn = document.createElement('button');
+  autoImportBtn.id = 'gemini-auto-import-btn';
+  autoImportBtn.className = 'gemini-action-btn';
+  autoImportBtn.type = 'button';
+  autoImportBtn.textContent = '📥 自動インポート';
+  autoImportBtn.addEventListener('click', runAutoImport);
+
+  btnGroup.appendChild(autoImportBtn);
+
+  // --- スクロールコントローラーの作成 ---
+  const scrollGroup = document.createElement('div');
+  scrollGroup.className = 'gemini-scroll-group';
+
+  const createScrollBtn = (text, title, action) => {
+    const btn = document.createElement('button');
+    btn.className = 'gemini-scroll-btn';
+    btn.type = 'button';
+    btn.textContent = text;
+    btn.title = title;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      executeScroll(action);
+    });
+    return btn;
+  };
+
+  scrollGroup.appendChild(createScrollBtn('⏫', '一番上へ', 'top'));
+  scrollGroup.appendChild(createScrollBtn('🔼', '1画面上へ', 'up'));
+  scrollGroup.appendChild(createScrollBtn('🔽', '1画面下へ', 'down'));
+  scrollGroup.appendChild(createScrollBtn('⏬', '一番下へ', 'bottom'));
+
+  btnGroup.appendChild(scrollGroup);
+  // -------------------------------------
+
+  container.appendChild(btnGroup);
 
   // --- コンテナに対してドラッグ開始の判定を付与 ---
   container.addEventListener('mousedown', (e) => {
-    // リストパネル内のスクロール操作やチェックボックス操作の時はドラッグしない
     if (e.target.tagName.toLowerCase() === 'input') return;
     if (e.target.closest('#gemini-auto-import-panel')) return;
+    if (e.target.closest('.gemini-scroll-btn')) return;
 
     isDragging = true;
     hasMoved = false;
@@ -359,7 +449,6 @@ async function renderRepoPanel() {
     startY = e.clientY;
   });
 
-  // ドラッグ直後にボタンがクリックされてしまうのを防ぐ
   container.addEventListener('click', (e) => {
     if (hasMoved) {
       e.stopPropagation();

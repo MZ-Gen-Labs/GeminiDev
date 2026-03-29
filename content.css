@@ -1,3 +1,37 @@
+/* =========================================
+   Geminiの隠されたスクロールバーを強制表示
+   ========================================= */
+body * {
+  scrollbar-width: auto !important;
+}
+
+body *::-webkit-scrollbar {
+  display: block !important;
+  width: 16px !important;
+  /* ★幅を10pxから16pxに拡張 */
+  height: 16px !important;
+}
+
+body *::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05) !important;
+  /* ★背景をうっすらグレーに */
+}
+
+body *::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.35) !important;
+  /* ★少し濃くして視認性UP */
+  border-radius: 8px !important;
+  border: 2px solid white !important;
+  /* ★白枠をつけて少し丸みと立体感を出す */
+}
+
+body *::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.55) !important;
+}
+
+/* =========================================
+   拡張機能UIのスタイル
+   ========================================= */
 #gemini-auto-import-container {
   position: fixed;
   bottom: 80px;
@@ -6,7 +40,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 8px;
+  gap: 12px;
   font-family: 'Segoe UI', sans-serif;
 }
 
@@ -40,18 +74,43 @@
   height: 16px;
 }
 
-#gemini-auto-import-btn {
-  padding: 12px 20px;
-  background-color: #0b57d0;
-  color: white;
-  border: none;
+.gemini-button-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.gemini-action-btn {
+  padding: 10px 16px;
   border-radius: 24px;
   font-size: 14px;
   font-weight: bold;
   cursor: pointer;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  transition: background-color 0.2s, transform 0.1s;
+  transition: all 0.2s ease;
   width: 100%;
+  text-align: center;
+}
+
+.gemini-action-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.gemini-action-btn:disabled {
+  background-color: #ccc !important;
+  color: #666 !important;
+  border-color: #ccc !important;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+#gemini-auto-import-btn {
+  background-color: #0b57d0;
+  color: white;
+  border: none;
 }
 
 #gemini-auto-import-btn:hover {
@@ -60,14 +119,47 @@
   box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
 }
 
-#gemini-auto-import-btn:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+#gemini-folder-upload-btn {
+  background-color: white;
+  color: #0b57d0;
+  border: 2px solid #0b57d0;
+  padding: 8px 16px;
 }
 
-#gemini-auto-import-btn:disabled {
-  background-color: #ccc;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
+#gemini-folder-upload-btn:hover {
+  background-color: #f0f4f9;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* --- スクロールコントローラー用 --- */
+.gemini-scroll-group {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.gemini-scroll-btn {
+  flex: 1;
+  padding: 8px 0;
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 16px;
+  font-size: 16px;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: background-color 0.2s;
+  text-align: center;
+  line-height: 1;
+}
+
+.gemini-scroll-btn:hover {
+  background-color: #f0f4f9;
+}
+
+.gemini-scroll-btn:active {
+  background-color: #e8eaed;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
 }
