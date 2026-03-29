@@ -44,13 +44,10 @@ function executeScroll(action) {
   let scrollableTarget = null;
   let maxScrollAmount = 0;
 
-  // 1. 画面内の全要素のCSSを確認し、実際にスクロール可能な領域を探す
   document.querySelectorAll('*').forEach(el => {
     const style = window.getComputedStyle(el);
-    // スクロールバーが表示される設定になっているか確認
     if (style.overflowY === 'auto' || style.overflowY === 'scroll' || style.overflow === 'auto' || style.overflow === 'scroll') {
       const scrollAmount = el.scrollHeight - el.clientHeight;
-      // 実際にスクロールする余地があり、ある程度の高さ(100px以上)を持つ要素を対象とする
       if (scrollAmount > maxScrollAmount && el.clientHeight > 100) {
         maxScrollAmount = scrollAmount;
         scrollableTarget = el;
@@ -58,10 +55,9 @@ function executeScroll(action) {
     }
   });
 
-  // 2. 見つかった内部コンテナと、念のため画面全体(window/document)の両方に命令を送る
   const targets = [window, document.documentElement, document.body];
   if (scrollableTarget) {
-    targets.unshift(scrollableTarget); // 最も怪しい内部コンテナを最優先に処理
+    targets.unshift(scrollableTarget);
   }
 
   targets.forEach(target => {
@@ -88,9 +84,7 @@ function executeScroll(action) {
           else target.scrollBy({ top: (clientHeight * 0.8), behavior: 'smooth' });
           break;
       }
-    } catch (e) {
-      // エラーは無視して次の要素へ
-    }
+    } catch (e) { }
   });
 }
 
@@ -424,7 +418,6 @@ async function renderRepoPanel() {
   scrollGroup.appendChild(createScrollBtn('⏬', '一番下へ', 'bottom'));
 
   btnGroup.appendChild(scrollGroup);
-  // -------------------------------------
 
   container.appendChild(btnGroup);
 
@@ -452,6 +445,13 @@ async function renderRepoPanel() {
     }
   }, true);
 }
+
+// --- 今回の追加箇所: 更新通知を受け取るリスナー ---
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "REFRESH_LIST") {
+    renderRepoPanel();
+  }
+});
 
 // SPAでの画面遷移に対応するためObserverで監視
 const observer = new MutationObserver(() => {

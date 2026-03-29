@@ -34,10 +34,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // --- 修正箇所: ストレージ保存完了後にメッセージを送信 ---
   function saveRepos(repos, msg) {
     chrome.storage.local.set({ repos }, () => {
       loadRepos();
       showStatus(msg, '#0f9d58');
+
+      // 実行中のGeminiのタブを探して、リスト更新を通知する
+      chrome.tabs.query({ url: "*://gemini.google.com/*" }, (tabs) => {
+        tabs.forEach(tab => {
+          chrome.tabs.sendMessage(tab.id, { action: "REFRESH_LIST" }).catch(() => {
+            // タブが読み込み中の場合などはエラーが出るため無視
+          });
+        });
+      });
     });
   }
 
