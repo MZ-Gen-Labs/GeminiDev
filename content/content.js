@@ -1,3 +1,4 @@
+//
 // utility: 指定したミリ秒待機する
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -88,9 +89,58 @@ function executeScroll(action) {
   });
 }
 
+// ==========================================
+// モデル切り替え用ロジック（修正版）
+// ==========================================
+async function executeModelSwitch(targetModelName) {
+  let modelBtn = null;
+  const selectors = 'button, div[role="button"]';
+
+  // 1. 現在のモデル名が表示されているボタンを探す
+  const currentButtons = Array.from(document.querySelectorAll(selectors));
+  modelBtn = currentButtons.find(btn => {
+    const text = btn.textContent;
+    // 「高速モード」「思考モード」「Gemini 3」などを含むボタンを特定
+    return (text.includes('モード') || text.includes('Pro') || text.includes('Gemini')) &&
+      btn.querySelector('mat-icon, svg'); // アイコンが含まれていることが多い
+  });
+
+  if (!modelBtn) throw new Error('モデル選択ボタンが見つかりませんでした。');
+
+  modelBtn.click();
+  await sleep(800); // メニュー展開を少し長めに待機
+
+  // 2. メニューの中から対象のモデル名を探す
+  // 完全に一致するテキスト、または role="menuitem" 内のテキストを優先する
+  let modelItem = null;
+  const menuItems = Array.from(document.querySelectorAll('div[role="menuitem"], li, button'));
+
+  modelItem = menuItems.find(item => {
+    const text = item.textContent.trim();
+    // 説明文（「複雑な問題を解決」など）を拾わないよう、先頭が一致するかチェック
+    return text.startsWith(targetModelName);
+  });
+
+  if (!modelItem) {
+    // フォールバック: 既存の検索関数で再試行
+    modelItem = findTerminalElementByText('div, span, li', targetModelName);
+  }
+
+  if (!modelItem) throw new Error(`モデル「${targetModelName}」が見つかりませんでした。`);
+
+  // 3. クリック実行
+  // role="menuitem" 自体、またはその中のクリック可能な要素を叩く
+  const clickable = modelItem.getAttribute('role') === 'menuitem' ? modelItem : (modelItem.closest('div[role="menuitem"]') || modelItem);
+
+  clickable.click();
+
+  showToast(`🤖 モデルを ${targetModelName} に切り替えました`);
+  await sleep(1000); // 切り替え完了後の安定待ち
+}
+
 // 1件のURL（またはパス）をインポートする処理
+//
 async function importSingleUrl(targetString) {
-  // --- 修正箇所: 「＋」ボタンの特定ロジックを更に強化 ---
   let plusBtn = null;
   const textarea = document.querySelector('textarea, rich-textarea, div[contenteditable="true"]');
 
@@ -100,7 +150,6 @@ async function importSingleUrl(targetString) {
       const allBtns = Array.from(container.querySelectorAll('button, div[role="button"]'));
       plusBtn = allBtns.find(btn => {
         const label = (btn.getAttribute('aria-label') || '').toLowerCase();
-        // 追加条件: 1. 追加/ツール/アップロードを含む、2. 削除/モデル/Geminiを含まない
         const isMatch = (label.includes('追加') || label.includes('add') || label.includes('ツール') || label.includes('アップロード'));
         const isExclude = (label.includes('削除') || label.includes('remove') || label.includes('モデル') || label.includes('model') || label.includes('gemini'));
         return isMatch && !isExclude;
@@ -111,7 +160,6 @@ async function importSingleUrl(targetString) {
     }
   }
 
-  // フォールバック: aria-labelベースで直接探す（モデル除外付き）
   if (!plusBtn) {
     const fallbackBtns = Array.from(document.querySelectorAll('button[aria-label*="追加"], button[aria-label*="Add"], button[aria-haspopup="true"]'));
     plusBtn = fallbackBtns.find(btn => {
@@ -120,7 +168,7 @@ async function importSingleUrl(targetString) {
     });
   }
 
-  if (!plusBtn) throw new Error('[+] メニューボタンが見つかりませんでした。');
+  if (!plusBtn) throw new Error('[+] メメニューボタンが見つかりませんでした。');
 
   plusBtn.click();
   await sleep(600);
@@ -174,7 +222,7 @@ async function importSingleUrl(targetString) {
     if (insertBtn) {
       let targetBtn = insertBtn.closest('button') || insertBtn.closest('div[role="button"]') || insertBtn;
       targetBtn.click();
-      await sleep(2500); // チップ生成待ち
+      await sleep(2500);
     } else {
       throw new Error('「インポート」実行ボタンが見つかりませんでした。');
     }
@@ -290,6 +338,7 @@ if (!window.geminiDragInitialized) {
   });
 }
 
+// モデル選択UIを含む新しいレンダリング関数
 async function renderRepoPanel() {
   let container = document.getElementById('gemini-auto-import-container');
   if (!container) {
@@ -298,13 +347,43 @@ async function renderRepoPanel() {
     document.body.appendChild(container);
   }
   container.innerHTML = '';
-  const data = await chrome.storage.local.get(['repos', 'widgetPosition']);
+  const data = await chrome.storage.local.get(['repos', 'widgetPosition', 'selectedModel']);
   if (data.widgetPosition) {
     container.style.bottom = 'auto';
     container.style.right = 'auto';
     container.style.left = data.widgetPosition.left;
     container.style.top = data.widgetPosition.top;
   }
+
+  // モデル選択ドロップダウンの追加
+  const modelGroup = document.createElement('div');
+  modelGroup.className = 'gemini-model-group';
+
+  const modelSelect = document.createElement('select');
+  modelSelect.id = 'gemini-model-select';
+  ['高速モード', '思考モード', 'Pro'].forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = m;
+    if (m === (data.selectedModel || '思考モード')) opt.selected = true;
+    modelSelect.appendChild(opt);
+  });
+
+  modelSelect.addEventListener('change', async (e) => {
+    await chrome.storage.local.set({ selectedModel: e.target.value });
+  });
+
+  const modelApplyBtn = document.createElement('button');
+  modelApplyBtn.className = 'gemini-model-apply-btn';
+  modelApplyBtn.textContent = '切替';
+  modelApplyBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    executeModelSwitch(modelSelect.value);
+  });
+
+  modelGroup.appendChild(modelSelect);
+  modelGroup.appendChild(modelApplyBtn);
+
   let repos = data.repos || [];
   if (repos.length > 0) {
     const panel = document.createElement('div');
@@ -327,23 +406,39 @@ async function renderRepoPanel() {
     });
     container.appendChild(panel);
   }
+
   const bg = document.createElement('div'); bg.className = 'gemini-button-group';
-  const ab = document.createElement('button'); ab.id = 'gemini-auto-import-btn'; ab.className = 'gemini-action-btn'; ab.type = 'button'; ab.textContent = '📥 自動インポート'; ab.addEventListener('click', runAutoImport);
+
+  // UIの順序: モデル選択 -> インポートボタン -> スクロールボタン
+  bg.appendChild(modelGroup);
+
+  const ab = document.createElement('button'); ab.id = 'gemini-auto-import-btn'; ab.className = 'gemini-action-btn'; ab.type = 'button'; ab.textContent = '📥 自動インポート';
+  ab.addEventListener('click', async () => {
+    // インポート前に選択中のモデルへ切り替え
+    const currentData = await chrome.storage.local.get(['selectedModel']);
+    if (currentData.selectedModel) {
+      try { await executeModelSwitch(currentData.selectedModel); } catch (e) { }
+    }
+    runAutoImport();
+  });
   bg.appendChild(ab);
+
   const sg = document.createElement('div'); sg.className = 'gemini-scroll-group';
   const csb = (t, ti, a) => {
     const b = document.createElement('button'); b.className = 'gemini-scroll-btn'; b.type = 'button'; b.textContent = t; b.title = ti; b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); executeScroll(a); }); return b;
   };
   sg.appendChild(csb('⏫', 'トップ', 'top')); sg.appendChild(csb('🔼', '上', 'up')); sg.appendChild(csb('🔽', '下', 'down')); sg.appendChild(csb('⏬', 'ラスト', 'bottom'));
   bg.appendChild(sg); container.appendChild(bg);
+
   container.addEventListener('mousedown', (e) => {
-    if (e.target.tagName.toLowerCase() === 'input' || e.target.closest('#gemini-auto-import-panel') || e.target.closest('.gemini-scroll-btn')) return;
+    if (e.target.tagName.toLowerCase() === 'input' || e.target.tagName.toLowerCase() === 'select' || e.target.closest('#gemini-auto-import-panel') || e.target.closest('.gemini-scroll-btn') || e.target.closest('.gemini-model-apply-btn')) return;
     isDragging = true; hasMoved = false; dragTarget = container;
     const r = container.getBoundingClientRect(); initialX = r.left; initialY = r.top; startX = e.clientX; startY = e.clientY;
   });
   container.addEventListener('click', (e) => { if (hasMoved) { e.stopPropagation(); e.preventDefault(); } }, true);
 }
 
+//
 chrome.runtime.onMessage.addListener((request) => { if (request.action === "REFRESH_LIST") renderRepoPanel(); });
 const observer = new MutationObserver(() => { if (!document.getElementById('gemini-auto-import-container')) renderRepoPanel(); });
 observer.observe(document.body, { childList: true, subtree: true });
