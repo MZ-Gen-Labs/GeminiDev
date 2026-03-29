@@ -342,7 +342,7 @@ async function runAutoImport() {
         const repoIndex = repos.findIndex(r => r.url === targetUrl);
         if (repoIndex !== -1) repos[repoIndex].lastImported = Date.now();
       } catch (e) {
-        console.warn(`[Gemini Repo Importer] ${targetUrl} 失敗:`, e);
+        console.warn(`[Dev Toolkit for Gemini] ${targetUrl} 失敗:`, e);
         hasError = true;
       }
       if (i < targets.length - 1) await sleep(2000);

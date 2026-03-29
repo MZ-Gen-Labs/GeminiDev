@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Gemini Repo Importer",
+  "name": "Dev Toolkit for Gemini",
   "version": "1.0",
-  "description": "Geminiのチャット画面で、記憶したGitHubリポジトリURLをボタン1つで一発インポートします。",
+  "description": "Geminiのチャット画面で、リポジトリの一括インポート、モデル切り替え、スクロール補助などの開発者向け便利機能を提供します。",
   "permissions": [
     "storage"
   ],
@@ -11,7 +11,7 @@
   ],
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "Gemini Repo Importer 設定"
+    "default_title": "Dev Toolkit for Gemini 設定"
   },
   "content_scripts": [
     {
